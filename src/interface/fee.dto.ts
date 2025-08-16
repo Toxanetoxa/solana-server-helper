@@ -7,4 +7,5 @@ const ClientCommandSchema = z.object({
 
 type ClientCommand = z.infer<typeof ClientCommandSchema>;
 
-export { ClientCommandSchema, ClientCommand };
+export { ClientCommandSchema };
+export type { ClientCommand };

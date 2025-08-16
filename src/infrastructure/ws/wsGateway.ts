@@ -1,5 +1,5 @@
 import { WebSocketServer, type WebSocket } from "ws";
-import type { Recommendation, Risk } from "../../types/types";
+import type { Recommendation, Risk } from "../../types/types.js";
 
 type ClientState = { ws: WebSocket; risk: Risk; lastSentAt?: number };
 

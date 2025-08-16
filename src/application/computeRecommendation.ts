@@ -1,4 +1,4 @@
-import type { IBuildRecommendationParams, IComputeRecommendationParams, Recommendation } from '../types/types';
+import type { IBuildRecommendationParams, IComputeRecommendationParams, Recommendation } from '../types/types.js';
 import { buildRecommendation } from '../domain/recommendation.js';
 
 const computeRecommendation = async (

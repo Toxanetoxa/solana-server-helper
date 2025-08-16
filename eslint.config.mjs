@@ -3,24 +3,26 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import stylistic from "@stylistic/eslint-plugin";
 import eslintConfigPrettier from "eslint-config-prettier";
-import n from "eslint-plugin-n";
-import importX from "eslint-plugin-import-x";
 
 export default [
+	// игноры
 	{ ignores: ["dist/**", "node_modules/**"] },
 
+	// базовые правила
 	js.configs.recommended,
+
+	// TypeScript без type-check (быстро)
 	...tseslint.configs.recommended,
 
+	// стиль: табы и длина строки
 	{
-		plugins: { "@stylistic": stylistic, n, "import-x": importX },
+		plugins: { "@stylistic": stylistic },
 		rules: {
 			"@stylistic/no-tabs": "off",
 			"no-mixed-spaces-and-tabs": ["error", "smart-tabs"],
 			"@stylistic/max-len": [
 				"warn",
 				{
-					// или 'off', если не нужно
 					code: 100,
 					ignoreComments: true,
 					ignoreUrls: true,
@@ -28,23 +30,10 @@ export default [
 					ignoreTemplateLiterals: true,
 				},
 			],
-			"n/file-extension-in-import": [
-				"error",
-				"always",
-				{
-					ignorePackages: true,
-					tryExtensions: [".js", ".mjs", ".cjs", ".ts", ".tsx"],
-				},
-			],
-			"import-x/extensions": "off",
-		},
-		settings: {
-			"import-x/resolver": {
-				typescript: { project: true, alwaysTryTypes: true },
-				node: { extensions: [".js", ".mjs", ".cjs", ".ts", ".tsx"] },
-			},
+			"n/no-process-exit": "off",
 		},
 	},
 
+	// последним — выключаем конфликты с Prettier
 	eslintConfigPrettier,
 ];

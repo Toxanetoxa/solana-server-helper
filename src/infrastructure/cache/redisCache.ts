@@ -1,5 +1,5 @@
-import type { Cache } from "../../types/types";
-import type { RedisClient } from "./redisClient";
+import type { Cache } from "../../types/types.js";
+import type { RedisClient } from "./redisClient.js";
 
 type JsonValue = unknown;
 

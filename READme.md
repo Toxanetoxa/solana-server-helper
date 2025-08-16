@@ -1,0 +1,1 @@
+wscat -c ws://localhost:8787/ws

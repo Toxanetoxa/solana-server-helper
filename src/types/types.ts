@@ -41,13 +41,13 @@ export interface RpcRecommendation {
 	stale?: boolean;
 }
 
-interface IComputeRecommendationParams {
+export interface IComputeRecommendationParams {
 	risk: Risk;
 	rpc: RpcProvider;
-	cuEstimate: number;      // по типу транзакции выберем позже
+	cuEstimate: number; // по типу транзакции выберем позже
 }
 
-interface IBuildRecommendationParams {
+export interface IBuildRecommendationParams {
 	cuPriceMicroLamports: number; // цена в микролампортах за единицу вычислительной мощности
 	cuEstimate: number;           // оценка вычислительных единиц (CU) для транзакции
 	latencyMs: number;           // задержка в миллисекундах
@@ -66,7 +66,7 @@ interface IBuildRecommendationParams {
 // итог: 1000 * 5000 / 1e6 = 5 лампортов
 // итоговая стоимость в SOL: 5 / 1e9 = 5e-9 SOL
 
-interface RpcProvider {
+export interface RpcProvider {
 	healthProbe(): Promise<NetworkSnapshot>;                    // раз в N сек
 	recentPrioritizationFees(): Promise<number[] | null>;       // массив µlamports/CU
 }
@@ -78,16 +78,16 @@ export interface Cache<K, V> {
 	ttl?(key: K): Promise<number | null>;
 }
   
-interface Clock {
+export interface Clock {
 	now(): number;
 }
   
-interface Broadcaster<T> {
+export interface Broadcaster<T> {
 	publish(topic: string, payload: T): void;
 	subscribe(topic: string, onMessage: (payload: T) => void): () => void; // unsubscribe
 }
 
-interface RecoComputer {
+export interface RecoComputer {
 	compute(
 		risk: Risk,
 		snapshot: NetworkSnapshot,

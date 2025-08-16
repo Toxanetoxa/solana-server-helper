@@ -1,10 +1,10 @@
 import { config } from "./config/config.js";
 import { SolanaRpc } from "./infrastructure/rpc/solanaRpc.js";
-import { WsGateway } from "./infrastructure/ws/wsGateway";
-import type { Recommendation, Risk } from "./types/types";
-import { computeRecommendation } from "./application/computeRecommendation";
-import { createRedisClient } from "./infrastructure/cache/redisClient";
-import { RedisCache } from "./infrastructure/cache/redisCache";
+import { WsGateway } from "./infrastructure/ws/wsGateway.js";
+import type { Recommendation, Risk } from "./types/types.js";
+import { computeRecommendation } from "./application/computeRecommendation.js";
+import { createRedisClient } from "./infrastructure/cache/redisClient.js";
+import { RedisCache } from "./infrastructure/cache/redisCache.js";
 
 // Инициализация компонентов
 console.log("[server] starting...");
@@ -91,6 +91,12 @@ function onShutdown(sig: string) {
 		console.error("[ws] close error");
 	}
 	redis.quit().catch(() => redis.disconnect());
+	// ждем 500 мс, чтобы дать время на закрытие соединений
+	console.log("[server] shutdown complete.");
+	// форс-выход через 500 мс, если не успеем
+	// это нужно, чтобы избежать зависания в случае проблем с закрытием соединений
+	// например, если Redis не отвечает или WebSocket не закрывается
+	
 	setTimeout(() => process.exit(0), 500).unref();
 }
 

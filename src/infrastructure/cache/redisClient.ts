@@ -8,4 +8,5 @@ const createRedisClient = (url: string): RedisClient => {
 	return client;
 }
 
-export { createRedisClient, RedisClient };
+export { createRedisClient };
+export type { RedisClient };

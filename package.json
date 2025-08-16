@@ -32,5 +32,8 @@
     "tsx": "^4.15.7",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.39.1"
+  },
+  "engines": {
+    "node": ">=21.0.0"
   }
 }
