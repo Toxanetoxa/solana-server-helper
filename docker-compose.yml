@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: fee-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: fee-app:latest
+    working_dir: /app
+    container_name: fee-app
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # базовые переменные окружения
+      PORT: "8787"
+      WS_BROADCAST_INTERVAL_MS: "8000"
+      # список RPC через запятую (можешь расширить)
+      RPC_ENDPOINTS: "https://api.mainnet-beta.solana.com,https://rpc.ankr.com/solana"
+      # Redis внутри одной сети доступен по имени сервиса "redis"
+      REDIS_URL: "redis://redis:6379"
+      REDIS_PREFIX: "fee:"
+      NODE_ENV: "production"
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+    # (опционально) healthcheck приложения — включай, если добавишь HTTP /health
+    # healthcheck:
+    #   test: ["CMD", "wget", "-qO-", "http://localhost:8787/health"]
+    #   interval: 10s
+    #   timeout: 2s
+    #   retries: 6
+
+volumes:
+  redis-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./redis-data
+      o: bind
