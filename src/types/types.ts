@@ -95,3 +95,10 @@ export interface RecoComputer {
 		cuPriceMicroLm?: number
 	): Recommendation;
 }
+
+ export type JsonRpcResp<R = unknown> = {
+		jsonrpc: "2.0";
+		id: number;
+		result?: R;
+		error?: { code: number; message: string };
+ };

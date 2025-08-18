@@ -1,77 +1,126 @@
+// src/main.ts
 import { config } from "./config/config.js";
-import { SolanaRpc } from "./infrastructure/rpc/solanaRpc.js";
+import { makeClients } from "./infrastructure/rpc/factory.js";
+import { RpcAggregator } from "./infrastructure/rpc/aggregator.js";
 import { WsGateway } from "./infrastructure/ws/wsGateway.js";
-import type { Recommendation, Risk } from "./types/types.js";
+
+import type { Recommendation, Risk, RpcProvider } from "./types/types.js";
 import { computeRecommendation } from "./application/computeRecommendation.js";
+import { normalizeEndpoint } from "./infrastructure/rpc/url.js";
+
 import { createRedisClient } from "./infrastructure/cache/redisClient.js";
 import { RedisCache } from "./infrastructure/cache/redisCache.js";
 
-// Инициализация компонентов
-console.log("[server] starting...");
+// ---------------------------
+// Bootstrap
+// ---------------------------
+function maskEndpoint(url: string): string {
+	// скрываем хвост после /solana/ у Ankr
+	return url.replace(/(rpc\.ankr\.com\/solana\/).+/, "$1****");
+}
 
-const rpc = new SolanaRpc(config.endpoints);
+console.log("[server] starting...");
+console.log("[server] endpoints:", config.endpoints.map(maskEndpoint));
+
+const clients = makeClients(config.endpoints);
+const rpcAgg = new RpcAggregator(clients);
 const ws = new WsGateway(config.port);
 
+// ---- Redis
 const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
 const redisPrefix = process.env.REDIS_PREFIX || "fee:";
-
 const redis = createRedisClient(redisUrl);
 await redis.connect();
-
 const cache = new RedisCache<Recommendation>(redis, redisPrefix);
 
-// базовые CU-оценки для MVP
+// ---------------------------
+// Helpers
+// ---------------------------
+
+// Простой get-or-set для RedisCache
+async function getOrSet(
+	key: string,
+	compute: () => Promise<Recommendation>,
+	ttlMs: number,
+): Promise<Recommendation> {
+	const hit = await cache.get(key);
+	if (hit) return hit;
+	const val = await compute();
+	await cache.set(key, val, ttlMs);
+	return val;
+}
+
+// Адаптер: превращаем агрегатор в RpcProvider, не меняя интерфейсы use-case’ов
+const rpcFromAgg: RpcProvider = {
+	// берём лучший снапшот по latency
+	async healthProbe() {
+		const { snapshot } = await rpcAgg.bestSnapshot();
+		return snapshot;
+	},
+	// пытаемся получить µlamports/CU у «лучшего», затем у остальных
+	async recentPrioritizationFees() {
+		const { provider } = await rpcAgg.bestSnapshot();
+		return rpcAgg.recentPrioritizationFeesPrefer(provider);
+	},
+};
+
+// Базовые CU-оценки (MVP)
 const DEFAULT_CU: Record<"transfer" | "swap" | "mint", number> = {
 	transfer: 32_500,
 	swap: 200_000,
 	mint: 400_000,
 };
 
-const risks = ["eco", "balanced", "aggr"] as const; // satisfies Risk[]
+const risks = ["eco", "balanced", "aggr"] as const;
 type TxType = "transfer" | "swap" | "mint";
 const txType: TxType = "transfer";
 
+// ---------------------------
+// Tick loop
+// ---------------------------
+
 async function tick() {
 	try {
-		const snapshot = await rpc.healthProbe();
-		const endpoint = snapshot.endpoint;
+		// один раз снимаем лучший снапшот — для ключа кэша и меток stale/notes
+		const { snapshot } = await rpcAgg.bestSnapshot();
+		const endpoint = normalizeEndpoint(snapshot.endpoint);
 
 		const entries = await Promise.all(
 			risks.map(async (r): Promise<[Risk, Recommendation]> => {
 				const key = `reco:${r}:${endpoint}:${txType}`;
 
-				const base = await cache.getOrSet(
+				// кэшируем коротко (6–6.5s) — чуть меньше интервала WS, с джиттером
+				const reco = await getOrSet(
 					key,
-					async () => {
-						const reco = await computeRecommendation({
+					async () =>
+						computeRecommendation({
 							risk: r,
-							rpc,
+							rpc: rpcFromAgg, // используем адаптер поверх агрегатора
 							cuEstimate: DEFAULT_CU[txType],
-							// endpoint, // если computeRecommendation это поддерживает — лучше явно передать
-						});
-						return reco;
-					},
-					6_000 + Math.floor(Math.random() * 500),
+						}),
+					6000 + Math.floor(Math.random() * 500),
 				);
 
-				const enriched: Recommendation = { ...base };
+				// пометим stale/notes, если снапшот был «устаревший»
+				const enriched: Recommendation = { ...reco };
 				if (snapshot.stale) enriched.stale = true;
-				if (snapshot.notes?.length)
+				if (snapshot.notes?.length) {
 					enriched.notes = [...(enriched.notes ?? []), ...snapshot.notes];
-
+				}
 				return [r, enriched];
 			}),
 		);
 
 		const recos = Object.fromEntries(entries) as Record<Risk, Recommendation>;
 		ws.broadcast(recos);
+
 		console.log(`[tick] ${endpoint} @ ${new Date().toISOString()}`);
 	} catch (e) {
 		console.error("[tick error]", e);
 	}
 }
 
-// запуск + аккуратный цикл
+// Аккуратный цикл
 let stopped = false;
 (async function loop() {
 	while (!stopped) {
@@ -82,6 +131,10 @@ let stopped = false;
 	}
 })();
 
+// ---------------------------
+// Graceful shutdown
+// ---------------------------
+
 function onShutdown(sig: string) {
 	console.log(`[${sig}] shutting down...`);
 	stopped = true;
@@ -91,12 +144,7 @@ function onShutdown(sig: string) {
 		console.error("[ws] close error");
 	}
 	redis.quit().catch(() => redis.disconnect());
-	// ждем 500 мс, чтобы дать время на закрытие соединений
-	console.log("[server] shutdown complete.");
-	// форс-выход через 500 мс, если не успеем
-	// это нужно, чтобы избежать зависания в случае проблем с закрытием соединений
-	// например, если Redis не отвечает или WebSocket не закрывается
-	
+	console.log("[server] shutdown scheduled.");
 	setTimeout(() => process.exit(0), 500).unref();
 }
 

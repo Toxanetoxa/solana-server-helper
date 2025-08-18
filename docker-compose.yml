@@ -25,16 +25,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    environment:
-      # базовые переменные окружения
-      PORT: "8787"
-      WS_BROADCAST_INTERVAL_MS: "8000"
-      # список RPC через запятую (можешь расширить)
-      RPC_ENDPOINTS: "https://api.mainnet-beta.solana.com,https://rpc.ankr.com/solana"
-      # Redis внутри одной сети доступен по имени сервиса "redis"
-      REDIS_URL: "redis://redis:6379"
-      REDIS_PREFIX: "fee:"
-      NODE_ENV: "production"
+    # environment:
+    #   # базовые переменные окружения
+    #   PORT: "8787"
+    #   WS_BROADCAST_INTERVAL_MS: "8000"
+    #   # список RPC
+    #   RPC_SOLANA: ${RPC_SOLANA:-https://api.mainnet-beta.solana.com}
+    #   RPC_ANKR: ${RPC_ANKR:-}
+    #   # Redis внутри одной сети доступен по имени сервиса "redis"
+    #   REDIS_URL: "redis://redis:6379"
+    #   REDIS_PREFIX: "fee:"
+    #   NODE_ENV: "production"
+    env_file: .env
     ports:
       - "8787:8787"
     restart: unless-stopped
