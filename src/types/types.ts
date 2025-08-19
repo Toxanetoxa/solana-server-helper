@@ -12,13 +12,15 @@ export interface NetworkSnapshot {
 }
 
 export interface Recommendation {
-	feeLamports: number;         // итог в лампортах
-	feeSOL: number;              // feeLamports / 1e9
-	success: number;             // 0..1
-	recommendedRpc: string;
-	updatedAt: number;           // Date.now()
-	notes?: string[];
-	stale?: boolean;
+        cuPriceMicroLamports: number; // цена в µлампортах за единицу CU
+        cuEstimate: number;           // оценка CU для транзакции
+        feeLamports: number;          // итог в лампортах
+        feeSOL: number;               // feeLamports / 1e9
+        success: number;              // 0..1
+        recommendedRpc: string;
+        updatedAt: number;            // Date.now()
+        notes?: string[];
+        stale?: boolean;
 }
 export interface RpcInfo {
 	endpoint: string;
