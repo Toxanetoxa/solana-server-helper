@@ -18,17 +18,19 @@ const toSOL = (lamports: number): number => {
 }
 
 const buildRecommendation = (params: IBuildRecommendationParams ): Recommendation => {
-	const feeLamports = computeFeeLamports(params.cuPriceMicroLamports, params.cuEstimate);
-	const feeSOL = toSOL(feeLamports);
-	const success = successFromLatencyMs(params.latencyMs, params.risk);
-	return {
-		feeLamports,
-		feeSOL,
-		success,
-		recommendedRpc: params.rpc,
-		updatedAt: params.timestamp ?? Date.now(),
-		notes: params.notes ?? []
-	};
+        const feeLamports = computeFeeLamports(params.cuPriceMicroLamports, params.cuEstimate);
+        const feeSOL = toSOL(feeLamports);
+        const success = successFromLatencyMs(params.latencyMs, params.risk);
+        return {
+                cuPriceMicroLamports: params.cuPriceMicroLamports,
+                cuEstimate: params.cuEstimate,
+                feeLamports,
+                feeSOL,
+                success,
+                recommendedRpc: params.rpc,
+                updatedAt: params.timestamp ?? Date.now(),
+                notes: params.notes ?? []
+        };
 }
 
 export {
