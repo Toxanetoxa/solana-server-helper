@@ -34,23 +34,23 @@ class WsGateway {
 		ws.on("error", () => this.clients.delete(state));
 	}
 
-        broadcast(recos: Record<Risk, Recommendation>) {
-                const payloads: Partial<Record<Risk, string>> = {};
-                const enc = (r: Risk) =>
-                        (payloads[r] ??= JSON.stringify({
-                                mode: r,
-                                cuPrice: recos[r].cuPriceMicroLamports,
-                                cuEstimate: recos[r].cuEstimate,
-                                priorityFeeLamports: recos[r].feeLamports,
-                                successScore: recos[r].success,
-                                recommendedRpc: recos[r].recommendedRpc,
-                                updatedAt: new Date(recos[r].updatedAt).toISOString(),
-                                notes: recos[r].notes,
-                        }));
-                for (const c of this.clients) {
-                        if (c.ws.readyState !== c.ws.OPEN) continue;
-                        try {
-                                c.ws.send(enc(c.risk));
+	broadcast(recos: Record<Risk, Recommendation>) {
+		const payloads: Partial<Record<Risk, string>> = {};
+		const enc = (r: Risk) =>
+			(payloads[r] ??= JSON.stringify({
+				mode: r,
+				cuPrice: recos[r].cuPriceMicroLamports,
+				cuEstimate: recos[r].cuEstimate,
+				priorityFeeLamports: recos[r].feeLamports,
+				successScore: recos[r].success,
+				recommendedRpc: recos[r].recommendedRpc,
+				updatedAt: new Date(recos[r].updatedAt).toISOString(),
+				notes: recos[r].notes,
+			}));
+		for (const c of this.clients) {
+			if (c.ws.readyState !== c.ws.OPEN) continue;
+			try {
+				c.ws.send(enc(c.risk));
 				c.lastSentAt = Date.now();
 			} catch (error) {
 				console.error("[ws] send error:", error);
