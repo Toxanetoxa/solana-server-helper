@@ -22,6 +22,7 @@ export interface Recommendation {
         notes?: string[];
         stale?: boolean;
 }
+
 export interface RpcInfo {
 	endpoint: string;
 	latencyMs: number;           // измеренная задержка лучшего RPC
@@ -79,11 +80,11 @@ export interface Cache<K, V> {
 	del(key: K): Promise<void>;
 	ttl?(key: K): Promise<number | null>;
 }
-  
+
 export interface Clock {
 	now(): number;
 }
-  
+
 export interface Broadcaster<T> {
 	publish(topic: string, payload: T): void;
 	subscribe(topic: string, onMessage: (payload: T) => void): () => void; // unsubscribe

@@ -19,6 +19,7 @@ export default [
 		plugins: { "@stylistic": stylistic },
 		rules: {
 			"@stylistic/no-tabs": "off",
+			"@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
 			"no-mixed-spaces-and-tabs": ["error", "smart-tabs"],
 			"@stylistic/max-len": [
 				"warn",
