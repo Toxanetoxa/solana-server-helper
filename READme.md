@@ -1,5 +1,7 @@
 wscat -c ws://localhost:8787/ws
 
+wscat -c ws://40ae675e4fe4.vps.myjino.ru:8787/ws
+
 https://rpc.ankr.com/solana_devnet/2352f3ed24e7fccabfd6504786217a7ce8163de4b23ef0b115418c77680b2433
 
 curl -X POST https://rpc.ankr.com/solana_devnet/2352f3ed24e7fccabfd6504786217a7ce8163de4b23ef0b115418c77680b2433 \

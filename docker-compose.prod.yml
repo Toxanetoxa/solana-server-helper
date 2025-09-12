@@ -23,11 +23,8 @@ services:
           - fee-redis
 
   app:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    image: fee-app:latest
-    working_dir: /app
+    # Image is provided by the workflow via ENV on the server
+    image: ${IMAGE}
     container_name: fee-app
     depends_on:
       redis:

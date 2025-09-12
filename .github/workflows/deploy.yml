@@ -1,0 +1,137 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/toxanetoxa/solana-server-helper # ghcr.io/owner/repo (должно быть в нижнем регистре)
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (optional for multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          # platforms: linux/amd64  # раскомментируй, если нужен multi-arch
+
+      - name: Ensure deploy directory exists
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 49274
+          script: |
+            set -euxo pipefail
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            mkdir -p ${{ secrets.DEPLOY_PATH }}/redis-data
+            rm -f ${{ secrets.DEPLOY_PATH }}/docker-compose.prod.yml || true
+
+      - name: Upload compose file via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 49274
+          script: |
+            set -euxo pipefail
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            cat > ${{ secrets.DEPLOY_PATH }}/docker-compose.prod.yml << 'EOF'
+            services:
+              redis:
+                image: redis:7-alpine
+                container_name: fee-redis
+                command: ["redis-server", "--appendonly", "yes"]
+                volumes:
+                  - redis-data:/data
+                ports:
+                  - "6379:6379"
+                healthcheck:
+                  test: ["CMD", "redis-cli", "ping"]
+                  interval: 5s
+                  timeout: 2s
+                  retries: 10
+                networks:
+                  fee-net:
+                    aliases:
+                      - redis
+                      - fee-redis
+
+              app:
+                # Image is provided by the workflow via ENV on the server
+                image: ${IMAGE}
+                container_name: fee-app
+                depends_on:
+                  redis:
+                    condition: service_healthy
+                env_file: .env
+                ports:
+                  - "8787:8787"
+                restart: unless-stopped
+                networks:
+                  - fee-net
+
+            volumes:
+              redis-data:
+                driver: local
+                driver_opts:
+                  type: none
+                  device: ./redis-data
+                  o: bind
+            
+            networks:
+              fee-net:
+                name: fee-net
+            EOF
+
+      - name: Deploy on VDS via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 49274
+          script: |
+            set -euxo pipefail
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            cd ${{ secrets.DEPLOY_PATH }}
+            export IMAGE=${{ env.IMAGE }}:${{ github.sha }}
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
