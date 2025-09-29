@@ -1,0 +1,3 @@
+# Ignore Markdown files globally
+*.md
+**/*.md
