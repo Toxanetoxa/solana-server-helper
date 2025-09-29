@@ -105,7 +105,7 @@ describe('RedisCache', () => {
   it('очищает весь namespace через scanIterator и unlink', async () => {
     // Сымитируем два ключа под префиксом, чтобы проверить объединение батча.
     stub.scanIterator.mockReturnValueOnce(asyncIteratorFrom(['cache:key1', 'cache:key2']));
-    stub.unlink.mockImplementation(async (first: string, ...rest: string[]) => 1 + rest.length);
+    stub.unlink.mockImplementation(async (_first: string, ...rest: string[]) => 1 + rest.length);
 
     const removed = await cache.purgeNamespace();
 
