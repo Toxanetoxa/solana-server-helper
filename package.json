@@ -49,7 +49,7 @@
 			"pnpm exec prettier --write",
 			"pnpm exec eslint --max-warnings=0 --fix"
 		],
-		"**/*.{json,md,yaml,yml}": [
+		"**/*.{json,yaml,yml}": [
 			"pnpm exec prettier --write"
 		]
 	}
