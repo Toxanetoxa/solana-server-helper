@@ -1,0 +1,12 @@
+{
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.ts"
+      ],
+      "rules": {
+        "@typescript-eslint/consistent-type-imports": "off"
+      }
+    }
+  ]
+}

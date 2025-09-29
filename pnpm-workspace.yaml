@@ -1,7 +1,9 @@
 packages:
   - .
+
 onlyBuiltDependencies:
   - bufferutil
   - esbuild
+  - msw
   - unrs-resolver
   - utf-8-validate
