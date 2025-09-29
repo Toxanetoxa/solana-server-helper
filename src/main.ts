@@ -8,36 +8,111 @@ import type { Recommendation, Risk, RpcProvider } from "./types/types.js";
 import { computeRecommendation } from "./application/computeRecommendation.js";
 import { normalizeEndpoint } from "./infrastructure/rpc/url.js";
 
-import { createRedisClient } from "./infrastructure/cache/redisClient.js";
+import { createRedisClient, type RedisClient } from "./infrastructure/cache/redisClient.js";
 import { RedisCache } from "./infrastructure/cache/redisCache.js";
+import { AppError, isAppError, RedisError, RpcError, WsError } from "./errors/appErrors.js";
 
 // ---------------------------
-// Bootstrap
+// Global state
+// ---------------------------
+let rpcAgg: RpcAggregator;
+let ws: WsGateway | undefined;
+let cache: RedisCache<Recommendation>;
+let redis: RedisClient | undefined;
+let stopped = false;
+let shuttingDown = false;
+
+// ---------------------------
+// Bootstrap helpers
 // ---------------------------
 function maskEndpoint(url: string): string {
 	// скрываем хвост после /solana/ у Ankr
 	return url.replace(/(rpc\.ankr\.com\/solana\/).+/, "$1****");
 }
 
-console.log("[server] starting...");
-console.log("[server] endpoints:", config.endpoints.map(maskEndpoint));
+function scheduleExit(code: number, delayMs = 500): void {
+	const timer = setTimeout(() => process.exit(code), delayMs);
+	// чтобы таймер не держал процесс живым, если всё уже завершено
+	 
+	timer.unref?.();
+}
 
-const clients = makeClients(config.endpoints);
-const rpcAgg = new RpcAggregator(clients);
-const ws = new WsGateway(config.port);
+function logFatal(error: unknown): void {
+	if (isAppError(error)) {
+		console.error(`[fatal/${error.kind}] ${error.message}`);
+		if (error.cause) {
+			console.error("[fatal/cause]", error.cause);
+		}
+		return;
+	}
+	if (error instanceof Error) {
+		console.error("[fatal]", error.message);
+		console.error(error.stack);
+		return;
+	}
+	console.error("[fatal]", error);
+}
 
-// ---- Redis
-const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
-const redisPrefix = process.env.REDIS_PREFIX || "fee:";
-const redis = createRedisClient(redisUrl);
-await redis.connect();
-const cache = new RedisCache<Recommendation>(redis, redisPrefix);
+async function closeWebSocket(fatal: boolean): Promise<void> {
+	if (!ws) return;
+	try {
+		await ws.close({
+			code: fatal ? 1011 : 1001,
+			reason: fatal ? "Server terminated by fatal error" : "Server shutdown",
+			timeout: 2000,
+		});
+	} catch (error) {
+		console.error("[ws] close error", error);
+	}
+	ws = undefined;
+}
+
+async function disconnectRedis(): Promise<void> {
+	if (!redis) return;
+	try {
+		await redis.quit();
+	} catch (error) {
+		console.error("[redis] quit error", error);
+		try {
+			await redis.disconnect();
+		} catch (disconnectErr) {
+			console.error("[redis] disconnect error", disconnectErr);
+		}
+	}
+	redis = undefined;
+}
+
+async function cleanupResources(fatal: boolean): Promise<void> {
+	if (shuttingDown) return;
+	shuttingDown = true;
+	await Promise.allSettled([closeWebSocket(fatal), disconnectRedis()]);
+}
+
+async function handleFatalError(error: unknown): Promise<void> {
+	if (stopped) return;
+	stopped = true;
+	logFatal(error);
+	await cleanupResources(true);
+	scheduleExit(1, 0);
+}
+
+function registerProcessLevelHandlers(): void {
+	process.on("uncaughtException", (error) => {
+		void handleFatalError(error);
+	});
+
+	process.on("unhandledRejection", (reason) => {
+		const error =
+			reason instanceof Error
+				? reason
+				: new AppError("unknown", "Unhandled rejection", { cause: reason });
+		void handleFatalError(error);
+	});
+}
 
 // ---------------------------
 // Helpers
 // ---------------------------
-
-// Простой get-or-set для RedisCache
 async function getOrSet(
 	key: string,
 	compute: () => Promise<Recommendation>,
@@ -50,21 +125,17 @@ async function getOrSet(
 	return val;
 }
 
-// Адаптер: превращаем агрегатор в RpcProvider, не меняя интерфейсы use-case’ов
 const rpcFromAgg: RpcProvider = {
-	// берём лучший снапшот по latency
 	async healthProbe() {
 		const { snapshot } = await rpcAgg.bestSnapshot();
 		return snapshot;
 	},
-	// пытаемся получить µlamports/CU у «лучшего», затем у остальных
 	async recentPrioritizationFees() {
 		const { provider } = await rpcAgg.bestSnapshot();
 		return rpcAgg.recentPrioritizationFeesPrefer(provider);
 	},
 };
 
-// Базовые CU-оценки (MVP)
 const DEFAULT_CU: Record<"transfer" | "swap" | "mint", number> = {
 	transfer: 32_500,
 	swap: 200_000,
@@ -75,13 +146,8 @@ const risks = ["eco", "balanced", "aggr"] as const;
 type TxType = "transfer" | "swap" | "mint";
 const txType: TxType = "transfer";
 
-// ---------------------------
-// Tick loop
-// ---------------------------
-
 async function tick() {
 	try {
-		// один раз снимаем лучший снапшот — для ключа кэша и меток stale/notes
 		const { snapshot } = await rpcAgg.bestSnapshot();
 		const endpoint = normalizeEndpoint(snapshot.endpoint);
 
@@ -89,19 +155,17 @@ async function tick() {
 			risks.map(async (r): Promise<[Risk, Recommendation]> => {
 				const key = `reco:${r}:${endpoint}:${txType}`;
 
-				// кэшируем коротко (6–6.5s) — чуть меньше интервала WS, с джиттером
 				const reco = await getOrSet(
 					key,
 					async () =>
 						computeRecommendation({
 							risk: r,
-							rpc: rpcFromAgg, // используем адаптер поверх агрегатора
+							rpc: rpcFromAgg,
 							cuEstimate: DEFAULT_CU[txType],
 						}),
 					6000 + Math.floor(Math.random() * 500),
 				);
 
-				// пометим stale/notes, если снапшот был «устаревший»
 				const enriched: Recommendation = { ...reco };
 				if (snapshot.stale) enriched.stale = true;
 				if (snapshot.notes?.length) {
@@ -112,41 +176,80 @@ async function tick() {
 		);
 
 		const recos = Object.fromEntries(entries) as Record<Risk, Recommendation>;
-		ws.broadcast(recos);
+		ws?.broadcast(recos);
 
 		console.log(`[tick] ${endpoint} @ ${new Date().toISOString()}`);
-	} catch (e) {
-		console.error("[tick error]", e);
+	} catch (error) {
+		console.error("[tick error]", error);
 	}
 }
 
-// Аккуратный цикл
-let stopped = false;
-(async function loop() {
+async function startLoop(): Promise<void> {
 	while (!stopped) {
 		const t0 = Date.now();
 		await tick().catch(() => {});
 		const delay = Math.max(0, config.wsIntervalMs - (Date.now() - t0));
-		await new Promise((r) => setTimeout(r, delay));
+		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
-})();
-
-// ---------------------------
-// Graceful shutdown
-// ---------------------------
-
-function onShutdown(sig: string) {
-	console.log(`[${sig}] shutting down...`);
-	stopped = true;
-	try {
-		ws.close();
-	} catch {
-		console.error("[ws] close error");
-	}
-	redis.quit().catch(() => redis.disconnect());
-	console.log("[server] shutdown scheduled.");
-	setTimeout(() => process.exit(0), 500).unref();
 }
 
-process.on("SIGINT", () => onShutdown("SIGINT"));
-process.on("SIGTERM", () => onShutdown("SIGTERM"));
+function onShutdown(sig: string) {
+	if (stopped) return;
+	console.log(`[${sig}] shutting down...`);
+	stopped = true;
+	void cleanupResources(false).finally(() => {
+		console.log("[server] shutdown scheduled.");
+		scheduleExit(0);
+	});
+}
+
+function registerShutdownHandlers(): void {
+	process.on("SIGINT", () => onShutdown("SIGINT"));
+	process.on("SIGTERM", () => onShutdown("SIGTERM"));
+}
+
+async function bootstrap(): Promise<void> {
+	console.log("[server] starting...");
+	console.log("[server] endpoints:", config.endpoints.map(maskEndpoint));
+
+	const clients = makeClients(config.endpoints);
+
+	try {
+		rpcAgg = new RpcAggregator(clients);
+	} catch (error) {
+		throw error instanceof AppError
+			? error
+			: new RpcError("Failed to initialize RPC aggregator", { cause: error });
+	}
+
+	try {
+		ws = new WsGateway(config.port);
+	} catch (error) {
+		throw error instanceof AppError
+			? error
+			: new WsError(`Failed to start WebSocket gateway on port ${config.port}`, {
+					cause: error,
+				});
+	}
+
+	const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+	const redisPrefix = process.env.REDIS_PREFIX || "fee:";
+
+	redis = createRedisClient(redisUrl);
+	try {
+		await redis.connect();
+	} catch (error) {
+		throw new RedisError(`Failed to connect to Redis at ${redisUrl}`, {
+			cause: error,
+		});
+	}
+
+	cache = new RedisCache<Recommendation>(redis, redisPrefix);
+
+	registerProcessLevelHandlers();
+	registerShutdownHandlers();
+
+	await startLoop();
+}
+
+void bootstrap().catch((error) => handleFatalError(error));
