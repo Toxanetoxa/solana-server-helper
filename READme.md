@@ -52,15 +52,19 @@
 ## Быстрый старт без Docker
 
 1. Скопируйте пример конфигурации:
+
     ```bash
     cp .env.example .env
     ```
+
 2. Укажите рабочие RPC в `.env` (`RPC_SOLANA`, `RPC_ANKR`) и, при необходимости, поменяйте `REDIS_URL`.
 3. Установите зависимости и запустите dev-режим с авто-ребилдом:
+
     ```bash
     pnpm install
     pnpm run dev
     ```
+
 4. Redis должен быть доступен по `REDIS_URL`. При отсутствии — поднимите отдельный инстанс (`redis-server` или `docker run redis:7-alpine`).
 
 ## Запуск через Docker Compose
@@ -95,11 +99,15 @@ Dockerfile собирает TypeScript в `dist/`, финальный образ
 - **Endpoint**: `ws://<host>:<PORT>` (по умолчанию `ws://localhost:8787`).
 - **Подписка**: сразу после подключения сервер начнёт слать JSON для режима `balanced`.
 - **Смена режима**: отправьте команду
+
     ```json
     { "type": "set_mode", "risk": "aggr" }
     ```
+
     Допустимые значения `risk`: `"eco"`, `"balanced"`, `"aggr"`.
+
 - **Формат ответа**:
+
     ```json
     {
     	"mode": "balanced",
@@ -112,6 +120,7 @@ Dockerfile собирает TypeScript в `dist/`, финальный образ
     	"notes": ["rpc switched -> ..."]
     }
     ```
+
     Поле `notes` объединяет комментарии RPC-агрегатора и вычислителя (например, о переключении или о stale-состоянии).
 
 ## Кеш и устойчивость
