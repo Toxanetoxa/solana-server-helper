@@ -19,10 +19,9 @@ env:
   IMAGE: ghcr.io/toxanetoxa/solana-server-helper # ghcr.io/owner/repo (должно быть в нижнем регистре)
 
 jobs:
-  pr-checks:
-    name: PR Checks
+  quality:
+    name: Quality Checks
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,6 +58,7 @@ jobs:
     name: Build & Publish Image
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    needs: quality
     steps:
       - name: Checkout
         uses: actions/checkout@v4
