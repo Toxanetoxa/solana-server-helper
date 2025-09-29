@@ -39,14 +39,14 @@
 ### Фаза A. Надёжность кода
 
 1. **Тестовый фреймворк**: подключить `vitest` (ESM-friendly), конфиг `vitest.config.ts`.
-2. **Юнит-тесты**: покрыть `domain/recommendation.ts`, `application/computeRecommendation.ts`, `infrastructure/cache` (работа с JSON).
-3. **Интеграционные тесты**: мок RPC (nock/msw), проверить `RpcAggregator` + Redis (использовать `redis-mock`/`ioredis-mock`).
-4. **Static checks**: вернуть job линтера, добавить `pnpm run typecheck` (tsc --noEmit).
-5. **CI обновить**: lint, unit, integration (strategy: matrix или последовательные job). Build → deploy запускается только после успешных проверок.
+2. **Юнит-тесты**: покрыть `domain/recommendation.ts`, `application/computeRecommendation.ts`, `infrastructure/cache` (работа с JSON).✅
+3. **Интеграционные тесты**: мок RPC (nock/msw), проверить `RpcAggregator` + Redis (использовать `redis-mock`/`ioredis-mock`).✅
+4. **Static checks**: вернуть job линтера, добавить `pnpm run typecheck` (tsc --noEmit).✅
+5. **CI обновить**: lint, unit, integration (strategy: matrix или последовательные job). Build → deploy запускается только после успешных проверок.✅
 
 ### Фаза B. Обработка ошибок и устойчивость
 
-1. **Error boundary**: централизованный обработчик в `main.ts` (классы ошибок для RPC/Redis/WS).
+1. **Error boundary**: централизованный обработчик в `main.ts` (классы ошибок для RPC/Redis/WS). ✅
 2. **Retries/backoff**: для `recentPrioritizationFees`, health probe с экспоненциальной задержкой.
 3. **Circuit breaker**: метить проблемные RPC и не бомбить их до истечения таймаута.
 4. **Graceful degradation**: fallback значения fee + сигнализация в логи/метрики при `stale` > N секунд.

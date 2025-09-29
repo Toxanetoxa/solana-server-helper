@@ -1,5 +1,6 @@
 import { WebSocketServer, type WebSocket } from "ws";
 import type { Recommendation, Risk } from "../../types/types.js";
+import { WsError } from "../../errors/appErrors.js";
 
 type ClientState = { ws: WebSocket; risk: Risk; lastSentAt?: number };
 
@@ -9,7 +10,11 @@ class WsGateway {
 	private closing = false;
 
 	constructor(readonly port: number) {
-		this.wss = new WebSocketServer({ port });
+		try {
+			this.wss = new WebSocketServer({ port });
+		} catch (error) {
+			throw new WsError(`Failed to bind WebSocket server on port ${port}`, { cause: error });
+		}
 		this.wss.on("connection", (ws) => this.handle(ws));
 		console.log(`[ws] listening on :${port}`);
 	}

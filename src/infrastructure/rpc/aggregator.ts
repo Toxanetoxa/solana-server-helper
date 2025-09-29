@@ -1,6 +1,7 @@
 import type { NetworkSnapshot, RpcProvider } from "../../types/types.js";
 import { normalizeEndpoint } from "./url.js";
 import { config } from "../../config/config.js";
+import { RpcError } from "../../errors/appErrors.js";
 
 export class RpcAggregator {
 	private readonly first: RpcProvider;
@@ -14,10 +15,10 @@ export class RpcAggregator {
 	// пороги (можно вынести в конфиг)
 	private readonly minDwellMs = config.minDwellMs;
 	private readonly minGainMs = config.minGainMs;
-	private readonly minGainPct = config.minGainPct; 
+	private readonly minGainPct = config.minGainPct;
 
 	constructor(private readonly clients: RpcProvider[]) {
-		if (!clients.length) throw new Error("no rpc clients");
+		if (!clients.length) throw new RpcError("No RPC clients configured");
 		this.first = clients[0]!;
 	}
 
