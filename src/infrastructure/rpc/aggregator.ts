@@ -2,6 +2,7 @@ import type { NetworkSnapshot, RpcProvider } from "../../types/types.js";
 import { normalizeEndpoint } from "./url.js";
 import { config } from "../../config/config.js";
 import { RpcError } from "../../errors/appErrors.js";
+import { retryWithBackoff } from "../../utils/retry.js";
 
 export class RpcAggregator {
 	private readonly first: RpcProvider;
@@ -16,6 +17,9 @@ export class RpcAggregator {
 	private readonly minDwellMs = config.minDwellMs;
 	private readonly minGainMs = config.minGainMs;
 	private readonly minGainPct = config.minGainPct;
+	// параметры backoff берём из конфига, чтобы управлять ими через env
+	private readonly probeBackoff = config.rpcProbeBackoff;
+	private readonly feeBackoff = config.rpcFeeBackoff;
 
 	constructor(private readonly clients: RpcProvider[]) {
 		if (!clients.length) throw new RpcError("No RPC clients configured");
@@ -33,7 +37,12 @@ export class RpcAggregator {
 
 		for (const c of this.clients) {
 			try {
-				const snap = await c.healthProbe();
+				// health probe может редко флапать, поэтому даём несколько попыток с backoff
+				const snap = await retryWithBackoff(() => c.healthProbe(), {
+					retries: this.probeBackoff.retries,
+					initialDelayMs: this.probeBackoff.initialDelayMs,
+					maxDelayMs: this.probeBackoff.maxDelayMs,
+				});
 				// нормализуем endpoint, чтобы не плодить варианты с /
 				snap.endpoint = normalizeEndpoint(snap.endpoint);
 				if (!best || snap.latencyMs < best.snapshot.latencyMs) {
@@ -105,8 +114,22 @@ export class RpcAggregator {
 
 		for (const c of order) {
 			try {
-				const fees = await c.recentPrioritizationFees();
-				if (fees && fees.length) return fees;
+				// повторно запрашиваем комиссии, так как RPC иногда отдаёт пустые массивы
+				const fees = await retryWithBackoff(
+					async () => {
+						const result = await c.recentPrioritizationFees();
+						if (!result || result.length === 0) {
+							throw new Error("Empty prioritization fees");
+						}
+						return result;
+					},
+					{
+						retries: this.feeBackoff.retries,
+						initialDelayMs: this.feeBackoff.initialDelayMs,
+						maxDelayMs: this.feeBackoff.maxDelayMs,
+					},
+				);
+				return fees;
 			} catch {
 				/* ignore */
 			}
