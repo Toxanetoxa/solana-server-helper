@@ -1,45 +1,38 @@
 networks:
-  fee-net:
-    name: fee-net
+    fee-net:
+        name: fee-net
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: fee-redis
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis-data:/data
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
-    networks:
-      fee-net:
-        aliases:
-          - redis
-          - fee-redis
+    redis:
+        image: redis:7-alpine
+        command: ["redis-server", "--appendonly", "yes"]
+        volumes:
+            - redis-data:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 2s
+            retries: 10
+        networks:
+            - fee-net
 
-  app:
-    # Image is provided by the workflow via ENV on the server
-    image: ${IMAGE}
-    container_name: fee-app
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file: .env
-    ports:
-      - "8787:8787"
-    restart: unless-stopped
-    networks:
-      - fee-net
+    app:
+        image: ${IMAGE}
+        container_name: fee-app
+        depends_on:
+            redis:
+                condition: service_healthy
+        env_file: .env
+        ports:
+            - "8787:8787"
+        restart: unless-stopped
+        networks:
+            - fee-net
 
 volumes:
-  redis-data:
-    driver: local
-    driver_opts:
-      type: none
-      device: ./redis-data
-      o: bind
+    redis-data:
+        driver: local
+        driver_opts:
+            type: none
+            device: ./redis-data
+            o: bind
