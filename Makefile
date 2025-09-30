@@ -70,6 +70,7 @@ ps:
 help:
 	@echo "Доступные команды:"
 	@echo "  make up         - собрать и поднять весь стек (app + redis)"
+	@echo "  make up-prod    - Сборка и запуск прод-стека"
 	@echo "  make down       - остановить контейнеры"
 	@echo "  make clean      - полностью удалить всё (контейнеры + тома)"
 	@echo "  make rebuild    - пересобрать только приложение"
