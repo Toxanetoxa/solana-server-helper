@@ -119,13 +119,23 @@ jobs:
                   source: docker-compose.yml
                   target: ${{ secrets.DEPLOY_PATH }}/
 
+            - name: Upload prod compose file
+              uses: appleboy/scp-action@v0.1.7
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: 49274
+                  source: docker-compose.prod.yml
+                  target: ${{ secrets.DEPLOY_PATH }}/
+
     deploy:
         name: Rollout Containers
         runs-on: ubuntu-latest
         if: github.event_name == 'push'
         needs: prepare-deploy
         steps:
-            - name: TEMP build dev compose (remove later)
+            - name: Prepare runtime artifacts
               uses: appleboy/ssh-action@v1.2.0
               with:
                   host: ${{ secrets.SSH_HOST }}
@@ -133,12 +143,35 @@ jobs:
                   key: ${{ secrets.SSH_KEY }}
                   port: 49274
                   script: |
+                      bash <<'BASH'
                       set -euxo pipefail
                       cd ${{ secrets.DEPLOY_PATH }}
-                      docker compose -f docker-compose.yml build app
-                      docker compose -f docker-compose.yml up -d app
+                      export NVM_DIR="$HOME/.nvm"
+                      mkdir -p "$NVM_DIR"
+                      if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+                        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+                      fi
+                      # shellcheck disable=SC1091
+                      . "$NVM_DIR/nvm.sh"
+                      if [ -f .nvmrc ]; then
+                        TARGET_NODE=$(cat .nvmrc)
+                      else
+                        TARGET_NODE=22.18.0
+                      fi
+                      nvm install "$TARGET_NODE" --no-progress > /dev/null
+                      nvm use "$TARGET_NODE" > /dev/null
+                      if ! command -v pnpm >/dev/null 2>&1; then
+                        corepack enable || true
+                        corepack prepare pnpm@9.12.3 --activate || npm install -g pnpm
+                      else
+                        corepack enable || true
+                      fi
+                      pnpm install --frozen-lockfile || pnpm install
+                      pnpm run build
+                      pnpm prune --prod
+                      BASH
 
-            - name: Deploy on VDS via SSH
+            - name: Deploy containers
               uses: appleboy/ssh-action@v1.2.0
               with:
                   host: ${{ secrets.SSH_HOST }}
@@ -147,10 +180,9 @@ jobs:
                   port: 49274
                   script: |
                       set -euxo pipefail
-                      mkdir -p ${{ secrets.DEPLOY_PATH }}
                       cd ${{ secrets.DEPLOY_PATH }}
                       export IMAGE=${{ env.IMAGE }}:${{ github.sha }}
                       docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-                      docker compose -f docker-compose.yml pull
-                      docker compose -f docker-compose.yml up -d --remove-orphans
+                      docker compose -f docker-compose.prod.yml pull
+                      docker compose -f docker-compose.prod.yml up -d --remove-orphans
                       docker image prune -f
