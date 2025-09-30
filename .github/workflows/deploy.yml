@@ -107,7 +107,10 @@ jobs:
                       set -euxo pipefail
                       mkdir -p ${{ secrets.DEPLOY_PATH }}
                       mkdir -p ${{ secrets.DEPLOY_PATH }}/redis-data
+                      mkdir -p ${{ secrets.DEPLOY_PATH }}/scripts
+                      mkdir -p ${{ secrets.DEPLOY_PATH }}/docker
                       rm -f ${{ secrets.DEPLOY_PATH }}/docker-compose.yml || true
+                      rm -rf ${{ secrets.DEPLOY_PATH }}/docker/Dockerfile.runtime || true
 
             - name: Upload compose file
               uses: appleboy/scp-action@v0.1.7
@@ -129,6 +132,36 @@ jobs:
                   source: docker-compose.prod.yml
                   target: ${{ secrets.DEPLOY_PATH }}/
 
+            - name: Upload runtime script
+              uses: appleboy/scp-action@v0.1.7
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: 49274
+                  source: scripts/prepare_runtime.sh
+                  target: ${{ secrets.DEPLOY_PATH }}/scripts/
+
+            - name: Upload runtime Dockerfile
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: 49274
+                  script: |
+                      set -euxo pipefail
+                      cat <<'EOF' > ${{ secrets.DEPLOY_PATH }}/docker/Dockerfile.runtime
+                      FROM node:22.18.0-alpine
+                      WORKDIR /app
+                      ENV NODE_ENV=production
+                      COPY dist ./dist
+                      COPY package*.json ./
+                      COPY node_modules ./node_modules
+                      EXPOSE 8787
+                      CMD ["node", "dist/main.js"]
+                      EOF
+
     deploy:
         name: Rollout Containers
         runs-on: ubuntu-latest
@@ -143,33 +176,29 @@ jobs:
                   key: ${{ secrets.SSH_KEY }}
                   port: 49274
                   script: |
-                      bash <<'BASH'
+                      set -euxo pipefail
+                      export DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}
+                      cd ${{ secrets.DEPLOY_PATH }}
+                      ls -R scripts || true
+                      SCRIPT_PATH="scripts/prepare_runtime.sh"
+                      if [ ! -f "$SCRIPT_PATH" ]; then
+                        SCRIPT_PATH="scripts/scripts/prepare_runtime.sh"
+                      fi
+                      chmod +x "$SCRIPT_PATH"
+                      "$SCRIPT_PATH"
+
+            - name: Build runtime image
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: 49274
+                  script: |
                       set -euxo pipefail
                       cd ${{ secrets.DEPLOY_PATH }}
-                      export NVM_DIR="$HOME/.nvm"
-                      mkdir -p "$NVM_DIR"
-                      if [ ! -s "$NVM_DIR/nvm.sh" ]; then
-                        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-                      fi
-                      # shellcheck disable=SC1091
-                      . "$NVM_DIR/nvm.sh"
-                      if [ -f .nvmrc ]; then
-                        TARGET_NODE=$(cat .nvmrc)
-                      else
-                        TARGET_NODE=22.18.0
-                      fi
-                      nvm install "$TARGET_NODE" --no-progress > /dev/null
-                      nvm use "$TARGET_NODE" > /dev/null
-                      if ! command -v pnpm >/dev/null 2>&1; then
-                        corepack enable || true
-                        corepack prepare pnpm@9.12.3 --activate || npm install -g pnpm
-                      else
-                        corepack enable || true
-                      fi
-                      pnpm install --frozen-lockfile || pnpm install
-                      pnpm run build
-                      pnpm prune --prod
-                      BASH
+                      export IMAGE=${{ env.IMAGE }}:${{ github.sha }}
+                      docker build -t $IMAGE -f docker/Dockerfile.runtime docker
 
             - name: Deploy containers
               uses: appleboy/ssh-action@v1.2.0
@@ -182,7 +211,5 @@ jobs:
                       set -euxo pipefail
                       cd ${{ secrets.DEPLOY_PATH }}
                       export IMAGE=${{ env.IMAGE }}:${{ github.sha }}
-                      docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-                      docker compose -f docker-compose.prod.yml pull
                       docker compose -f docker-compose.prod.yml up -d --remove-orphans
                       docker image prune -f

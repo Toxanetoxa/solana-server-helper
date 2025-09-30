@@ -6,6 +6,7 @@ services:
     redis:
         image: redis:7-alpine
         command: ["redis-server", "--appendonly", "yes"]
+        container_name: fee-redis
         volumes:
             - redis-data:/data
         healthcheck:
@@ -22,9 +23,10 @@ services:
         depends_on:
             redis:
                 condition: service_healthy
-        env_file: .env
+        env_file:
+            - .env
         ports:
-            - "8787:8787"
+            - "${PORT:-8787}:${PORT:-8787}"
         restart: unless-stopped
         networks:
             - fee-net
