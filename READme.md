@@ -91,7 +91,14 @@ Dockerfile собирает TypeScript в `dist/`, финальный образ
 | `RPC_MIN_DWELL_MS`         | `60000`                               | Минимальное время удержания текущего лучшего RPC.                      |
 | `RPC_MIN_GAIN_MS`          | `10`                                  | Минимальный абсолютный выигрыш (мс), чтобы переключиться на новый RPC. |
 | `RPC_MIN_GAIN_PCT`         | `0.1`                                 | Минимальный относительный выигрыш (10%).                               |
-
+| `RPC_HEALTH_RETRIES`        | `2`                                  | Количество повторных health probe перед ошибкой.                       |
+| `RPC_HEALTH_BACKOFF_INITIAL_MS` | `100`                            | Стартовая задержка между health повторами (мс).                        |
+| `RPC_HEALTH_BACKOFF_MAX_MS` | `1500`                               | Максимальная задержка между health повторами (мс).                     |
+| `RPC_FEES_RETRIES`         | `2`                                   | Повторных попыток получения prioritization fees.                       |
+| `RPC_FEES_BACKOFF_INITIAL_MS` | `100`                              | Стартовая задержка между повторами fees-запроса (мс).                  |
+| `RPC_FEES_BACKOFF_MAX_MS`  | `1500`                                | Максимальная задержка между повторами fees-запроса (мс).               |
+| `RPC_CIRCUIT_FAILURE_THRESHOLD`  | `3`                             | Сколько подряд сбоев нужно, чтобы открыть circuit breaker.             |
+| `RPC_CIRCUIT_COOLDOWN_MS`  | `30000`                               | Сколько ждать до повторной попытки проблемного RPC (мс).               |
 Все значения читаются из `.env`, лишние кавычки/пробелы автоматически удаляются (`src/config/config.ts`).
 
 ## WebSocket API
@@ -110,14 +117,14 @@ Dockerfile собирает TypeScript в `dist/`, финальный образ
 
     ```json
     {
-    	"mode": "balanced",
-    	"cuPrice": 4200,
-    	"cuEstimate": 32500,
-    	"priorityFeeLamports": 136,
-    	"successScore": 0.92,
-    	"recommendedRpc": "https://rpc.ankr.com/solana/abcd",
-    	"updatedAt": "2024-06-12T08:12:31.123Z",
-    	"notes": ["rpc switched -> ..."]
+     "mode": "balanced",
+     "cuPrice": 4200,
+     "cuEstimate": 32500,
+     "priorityFeeLamports": 136,
+     "successScore": 0.92,
+     "recommendedRpc": "https://rpc.ankr.com/solana/abcd",
+     "updatedAt": "2024-06-12T08:12:31.123Z",
+     "notes": ["rpc switched -> ..."]
     }
     ```
 

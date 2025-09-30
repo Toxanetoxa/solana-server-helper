@@ -34,6 +34,12 @@ const rpcFeeBackoff = {
 	maxDelayMs: Number.parseInt(process.env.RPC_FEES_BACKOFF_MAX_MS ?? "1500", 10),
 };
 
+// параметры circuit breaker: сколько ошибок терпим и сколько ждём до новых попыток
+const rpcCircuit = {
+	failureThreshold: Number.parseInt(process.env.RPC_CIRCUIT_FAILURE_THRESHOLD ?? "3", 10),
+	cooldownMs: Number.parseInt(process.env.RPC_CIRCUIT_COOLDOWN_MS ?? "30000", 10),
+};
+
 if (endpoints.length === 0) {
 	// Лог для дебага: какие значения реально пришли
 	console.error("[config] RPC_SOLANA:", process.env.RPC_SOLANA);
@@ -52,4 +58,5 @@ export const config = {
 	minGainPct: Number.parseFloat(process.env.RPC_MIN_GAIN_PCT ?? "0.10"), // …или лучше на 10% от текущей латентности
 	rpcProbeBackoff,
 	rpcFeeBackoff,
+	rpcCircuit,
 };
