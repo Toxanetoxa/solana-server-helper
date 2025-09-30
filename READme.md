@@ -99,6 +99,13 @@ Dockerfile собирает TypeScript в `dist/`, финальный образ
 | `RPC_FEES_BACKOFF_MAX_MS`  | `1500`                                | Максимальная задержка между повторами fees-запроса (мс).               |
 | `RPC_CIRCUIT_FAILURE_THRESHOLD`  | `3`                             | Сколько подряд сбоев нужно, чтобы открыть circuit breaker.             |
 | `RPC_CIRCUIT_COOLDOWN_MS`  | `30000`                               | Сколько ждать до повторной попытки проблемного RPC (мс).               |
+| `FALLBACK_CU_PRICE_ECO`      | `3500`                               | µлампорта/CU для eco при fallback.                                     |
+| `FALLBACK_CU_PRICE_BALANCED` | `4500`                               | µлампорта/CU для balanced при fallback.                                |
+| `FALLBACK_CU_PRICE_AGGR`     | `5500`                               | µлампорта/CU для aggr при fallback.                                    |
+| `FALLBACK_CU_PRICE_FAIL`     | `4500`                               | µлампорта/CU для режима fail при fallback.                             |
+| `FALLBACK_LATENCY_MS`        | `600`                                | Латентность, используемая в fallback-рекомендации.                     |
+| `FALLBACK_RPC_LABEL`         | `(fallback)`                         | Метка RPC, возвращаемая в fallback-рекомендации.                       |
+| `FALLBACK_STALE_THRESHOLD_MS`| `45000`                              | Интервал, после которого считаем снапшот устаревшим и включаем fallback.|
 Все значения читаются из `.env`, лишние кавычки/пробелы автоматически удаляются (`src/config/config.ts`).
 
 ## WebSocket API

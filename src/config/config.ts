@@ -40,6 +40,21 @@ const rpcCircuit = {
 	cooldownMs: Number.parseInt(process.env.RPC_CIRCUIT_COOLDOWN_MS ?? "30000", 10),
 };
 
+// fallback значения: безопасные цены и лимиты устаревания
+const fallbackCuPriceMicroLamports = {
+	eco: Number.parseInt(process.env.FALLBACK_CU_PRICE_ECO ?? "3500", 10),
+	balanced: Number.parseInt(process.env.FALLBACK_CU_PRICE_BALANCED ?? "4500", 10),
+	aggr: Number.parseInt(process.env.FALLBACK_CU_PRICE_AGGR ?? "5500", 10),
+	fail: Number.parseInt(process.env.FALLBACK_CU_PRICE_FAIL ?? "4500", 10),
+};
+
+const fallback = {
+	cuPriceMicroLamports: fallbackCuPriceMicroLamports,
+	latencyMs: Number.parseInt(process.env.FALLBACK_LATENCY_MS ?? "600", 10),
+	rpcLabel: process.env.FALLBACK_RPC_LABEL ?? "(fallback)",
+	staleThresholdMs: Number.parseInt(process.env.FALLBACK_STALE_THRESHOLD_MS ?? "45000", 10),
+};
+
 if (endpoints.length === 0) {
 	// Лог для дебага: какие значения реально пришли
 	console.error("[config] RPC_SOLANA:", process.env.RPC_SOLANA);
@@ -59,4 +74,5 @@ export const config = {
 	rpcProbeBackoff,
 	rpcFeeBackoff,
 	rpcCircuit,
+	fallback,
 };

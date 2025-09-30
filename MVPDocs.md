@@ -49,7 +49,7 @@
 1. **Error boundary**: централизованный обработчик в `main.ts` (классы ошибок для RPC/Redis/WS). ✅
 2. **Retries/backoff**: для `recentPrioritizationFees`, health probe с экспоненциальной задержкой. ✅
 3. **Circuit breaker**: метить проблемные RPC и не бомбить их до истечения таймаута. ✅
-4. **Graceful degradation**: fallback значения fee + сигнализация в логи/метрики при `stale` > N секунд.
+4. **Graceful degradation**: fallback значения fee + сигнализация в логи/метрики при `stale` > N секунд. ✅
 
 ### Фаза C. Observability
 

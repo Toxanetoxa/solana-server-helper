@@ -6,6 +6,7 @@ import { WsGateway } from "./infrastructure/ws/wsGateway.js";
 
 import type { Recommendation, Risk, RpcProvider } from "./types/types.js";
 import { computeRecommendation } from "./application/computeRecommendation.js";
+import { buildFallbackRecommendation, shouldUseFallback } from "./application/fallback.js";
 import { normalizeEndpoint } from "./infrastructure/rpc/url.js";
 
 import { createRedisClient, type RedisClient } from "./infrastructure/cache/redisClient.js";
@@ -21,6 +22,8 @@ let cache: RedisCache<Recommendation>;
 let redis: RedisClient | undefined;
 let stopped = false;
 let shuttingDown = false;
+const lastFreshByRisk = new Map<Risk, number>();
+const fallbackUsage: Record<"eco" | "balanced" | "aggr", number> = { eco: 0, balanced: 0, aggr: 0 };
 
 // ---------------------------
 // Bootstrap helpers
@@ -33,7 +36,7 @@ function maskEndpoint(url: string): string {
 function scheduleExit(code: number, delayMs = 500): void {
 	const timer = setTimeout(() => process.exit(code), delayMs);
 	// чтобы таймер не держал процесс живым, если всё уже завершено
-	 
+
 	timer.unref?.();
 }
 
@@ -150,28 +153,70 @@ async function tick() {
 	try {
 		const { snapshot } = await rpcAgg.bestSnapshot();
 		const endpoint = normalizeEndpoint(snapshot.endpoint);
+		const snapshotNotes = snapshot.notes ? [...snapshot.notes] : [];
 
 		const entries = await Promise.all(
-			risks.map(async (r): Promise<[Risk, Recommendation]> => {
-				const key = `reco:${r}:${endpoint}:${txType}`;
+			risks.map(async (risk): Promise<[Risk, Recommendation]> => {
+				const key = `reco:${risk}:${endpoint}:${txType}`;
+				const previousFresh = lastFreshByRisk.get(risk);
+				let computeError: unknown;
+				let computed: Recommendation | null = null;
 
-				const reco = await getOrSet(
-					key,
-					async () =>
-						computeRecommendation({
-							risk: r,
-							rpc: rpcFromAgg,
-							cuEstimate: DEFAULT_CU[txType],
-						}),
-					6000 + Math.floor(Math.random() * 500),
-				);
-
-				const enriched: Recommendation = { ...reco };
-				if (snapshot.stale) enriched.stale = true;
-				if (snapshot.notes?.length) {
-					enriched.notes = [...(enriched.notes ?? []), ...snapshot.notes];
+				try {
+					const result = await getOrSet(
+						key,
+						async () =>
+							computeRecommendation({
+								risk,
+								rpc: rpcFromAgg,
+								cuEstimate: DEFAULT_CU[txType],
+							}),
+						6000 + Math.floor(Math.random() * 500),
+					);
+					computed = { ...result };
+					lastFreshByRisk.set(risk, Date.now());
+				} catch (error) {
+					computeError = error;
 				}
-				return [r, enriched];
+
+				const lastFreshAt = lastFreshByRisk.get(risk) ?? previousFresh;
+				const decision = shouldUseFallback({
+					risk,
+					snapshot,
+					lastFreshAt,
+					now: Date.now(),
+					staleThresholdMs: config.fallback.staleThresholdMs,
+					computeFailed: Boolean(computeError) || !computed,
+				});
+
+				if (decision.useFallback || !computed) {
+					const fallbackNotes = [...snapshotNotes];
+					if (decision.reason) fallbackNotes.push(decision.reason);
+					if (computeError instanceof Error) {
+						fallbackNotes.push(`error: ${computeError.message}`);
+					} else if (computeError) {
+						fallbackNotes.push(`error: ${String(computeError)}`);
+					}
+					fallbackUsage[risk] += 1;
+					console.warn(
+						`[fallback] risk=${risk} reason=${decision.reason ?? "unknown"} count=${fallbackUsage[risk]}`,
+					);
+					console.warn(`[metrics] fallback_total{risk="${risk}"} ${fallbackUsage[risk]}`);
+					const fallbackRecommendation = buildFallbackRecommendation({
+						risk,
+						config: config.fallback,
+						cuEstimate: DEFAULT_CU[txType],
+						notes: fallbackNotes,
+					});
+					return [risk, fallbackRecommendation];
+				}
+
+				const enriched: Recommendation = { ...computed };
+				if (snapshot.stale) enriched.stale = true;
+				if (snapshotNotes.length) {
+					enriched.notes = [...(enriched.notes ?? []), ...snapshotNotes];
+				}
+				return [risk, enriched];
 			}),
 		);
 
@@ -183,7 +228,6 @@ async function tick() {
 		console.error("[tick error]", error);
 	}
 }
-
 async function startLoop(): Promise<void> {
 	while (!stopped) {
 		const t0 = Date.now();
