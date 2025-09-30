@@ -107,7 +107,7 @@ jobs:
                       set -euxo pipefail
                       mkdir -p ${{ secrets.DEPLOY_PATH }}
                       mkdir -p ${{ secrets.DEPLOY_PATH }}/redis-data
-                      rm -f ${{ secrets.DEPLOY_PATH }}/docker-compose.prod.yml || true
+                      rm -f ${{ secrets.DEPLOY_PATH }}/docker-compose.yml || true
 
             - name: Upload compose file
               uses: appleboy/scp-action@v0.1.7
@@ -116,7 +116,7 @@ jobs:
                   username: ${{ secrets.SSH_USER }}
                   key: ${{ secrets.SSH_KEY }}
                   port: 49274
-                  source: docker-compose.prod.yml
+                  source: docker-compose.yml
                   target: ${{ secrets.DEPLOY_PATH }}/
 
     deploy:
@@ -125,6 +125,19 @@ jobs:
         if: github.event_name == 'push'
         needs: prepare-deploy
         steps:
+            - name: TEMP build dev compose (remove later)
+              uses: appleboy/ssh-action@v1.2.0
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: 49274
+                  script: |
+                      set -euxo pipefail
+                      cd ${{ secrets.DEPLOY_PATH }}
+                      docker compose -f docker-compose.yml build app
+                      docker compose -f docker-compose.yml up -d app
+
             - name: Deploy on VDS via SSH
               uses: appleboy/ssh-action@v1.2.0
               with:
@@ -138,6 +151,6 @@ jobs:
                       cd ${{ secrets.DEPLOY_PATH }}
                       export IMAGE=${{ env.IMAGE }}:${{ github.sha }}
                       docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-                      docker compose -f docker-compose.prod.yml pull
-                      docker compose -f docker-compose.prod.yml up -d --remove-orphans
+                      docker compose -f docker-compose.yml pull
+                      docker compose -f docker-compose.yml up -d --remove-orphans
                       docker image prune -f
